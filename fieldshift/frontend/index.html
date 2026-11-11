@@ -1,0 +1,83 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Field Shift</title>
+<script>try{var p=localStorage.getItem("fs_theme")||"system";document.documentElement.dataset.theme=p==="system"?(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"):p}catch(e){}</script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+:root{--red:#e1253f;--ink:#2a0a14;--bg:#faf6f6;--mut:#6b5a5f;--card:#fff;--line:#eadcdf;--inp:#fff;--alert:#fdf0f2;--bar:#f1e2e5;--head:#2a0a14}
+:root[data-theme=dark]{--ink:#f3e8ea;--bg:#1a1114;--mut:#b9a4aa;--card:#251a1e;--line:#3d2b32;--inp:#30232a;--alert:#3a1e25;--bar:#3d2b32;--head:#120a0d;color-scheme:dark}
+body,.card,input,select,.alert,.bar{transition:background-color .25s,color .25s,border-color .25s}
+[data-theme=dark] .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.85) contrast(.9)}
+:focus-visible{outline:2px solid var(--red);outline-offset:2px}
+*{box-sizing:border-box}body{margin:0;font-family:Montserrat,system-ui,sans-serif;background:var(--bg);color:var(--ink)}
+header{display:flex;justify-content:space-between;align-items:center;padding:14px 24px;background:var(--head);color:#fff}
+header b{font-size:20px}header b span{color:var(--red)}.tag{font-size:12px;background:var(--red);padding:4px 10px;border-radius:99px}
+main{display:grid;grid-template-columns:1.3fr 1fr;gap:16px;padding:16px;max-width:1300px;margin:auto}
+@media(max-width:900px){main{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px}
+#map{height:420px;border-radius:10px}h3{margin:0 0 10px}
+input,button,select{font:inherit;padding:8px 12px;border-radius:8px;border:1px solid var(--line);background:var(--inp);color:var(--ink)}
+button{background:var(--red);color:#fff;border:0;cursor:pointer}
+.bar{height:8px;background:var(--bar);border-radius:9px;margin:4px 0 10px}.bar i{display:block;height:100%;background:var(--red);border-radius:9px}
+.row{display:flex;justify-content:space-between;font-size:14px}.mut{color:var(--mut);font-size:13px}
+.alert{border-left:4px solid var(--red);padding:6px 10px;margin:8px 0;background:var(--alert);border-radius:6px;font-size:14px}
+#log{height:150px;overflow:auto;font-size:14px;margin-bottom:8px}
+</style></head><body>
+<header><b>Field <span>Shift</span></b><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span class="tag">DEMO DATA · NASA POWER live where available</span><select id="theme" aria-label="Theme" onchange="setTheme(this.value)"><option value="light">Light</option><option value="dark">Dark</option><option value="system">System</option></select></div></header>
+<main>
+<div class="card"><h3>Azerbaijan regions</h3><input id="q" placeholder="Search region..." oninput="load()"><div id="map" style="margin-top:10px"></div>
+<p class="mut">Markers are approximate city points. Colour = demo risk level. Not live satellite layers.</p></div>
+<div style="display:grid;gap:16px;align-content:start">
+<div class="card" id="info"><h3>Select a region</h3><p class="mut">Click a marker on the map.</p></div>
+<div class="card"><h3>Crop suitability <span class="mut">(demo engine)</span></h3><div id="crops" class="mut">Select a region first.</div></div>
+<div class="card" id="acc"></div>
+<div class="card"><h3>Productivity ranking <span class="mut">(demo)</span></h3><div id="rank"></div></div>
+<div class="card"><h3>Alerts <span class="mut">(demo)</span></h3><div id="alerts"></div></div>
+<div class="card"><h3>Assistant <span class="mut">(demo mode)</span></h3><div id="log"></div>
+<div style="display:flex;gap:6px"><input id="msg" style="flex:1" placeholder="Which crops suit this region?"><button onclick="send()">Send</button></div></div>
+</div></main>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const map=L.map('map').setView([40.4,47.8],7);let cur=null,layer=L.layerGroup().addTo(map);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap'}).addTo(map);
+const col={High:'#e1253f',Medium:'#f0a030',Low:'#2f9e6a'};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+async function api(p,o){o=o||{};o.headers={...(o.headers||{}),...(tok()?{Authorization:'Bearer '+tok()}:{})};const r=await fetch('/api'+p,o);if(!r.ok){let d='';try{d=(await r.json()).detail}catch{}throw new Error(typeof d==='string'&&d?d:'Check your input ('+r.status+')')}return r.json()}
+async function load(){const rs=await api('/regions?q='+encodeURIComponent(q.value));layer.clearLayers();
+ rs.forEach(r=>L.circleMarker([r.lat,r.lon],{radius:12,color:'#fff',weight:2,fillColor:col[r.risk],fillOpacity:.9})
+  .addTo(layer).bindTooltip(r.name).on('click',()=>pick(r)))}
+async function pick(r){cur=r.id;
+ info.innerHTML=`<h3>${esc(r.name)} <span class="mut">DEMO</span></h3>
+ <div class="row"><span>Temperature</span><b>${r.temp}°C</b></div><div class="row"><span>Precipitation</span><b>${r.precip} mm</b></div>
+ <div class="row"><span>Soil moisture</span><b>${r.soil} m³/m³</b></div><div class="row"><span>Productivity</span><b>${r.prod}/100</b></div>
+ <div class="row"><span>Risk</span><b style="color:${col[r.risk]}">${r.risk}</b></div><p class="mut" id="nasa">Loading NASA POWER...</p>`;
+ api('/nasa/power/'+r.id).then(d=>{const s=(d.series||[]).filter(x=>x.temp_c!=null);
+  nasa.textContent=d.available&&s.length?`${d.source}: last ${s.length} days avg ${(s.reduce((a,x)=>a+x.temp_c,0)/s.length).toFixed(1)}°C`:'NASA POWER unavailable right now (no data shown).'}).catch(()=>nasa.textContent='NASA POWER unavailable.');
+ const rec=await api('/recommend',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({region:r.id})});
+ crops.innerHTML=rec.results.map(c=>`<div class="row"><b>${esc(c.crop)}</b><span>${c.score}%</span></div><div class="bar"><i style="width:${c.score}%"></i></div><div class="mut" style="margin-top:-6px">${esc(c.risk)}</div>`).join('');
+ const a=await api('/alerts?region='+r.id);alerts.innerHTML=a.length?a.map(x=>`<div class="alert"><b>${esc(x.type)}</b> · ${esc(x.severity)}<br>${esc(x.text)}<br><i>${esc(x.action)}</i></div>`).join(''):'<span class="mut">No alerts for this region.</span>'}
+async function send(){const m=msg.value.trim();if(!m)return;msg.value='';log.innerHTML+=`<p><b>You:</b> ${esc(m)}</p>`;
+ try{const r=await api('/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:m,region:cur})});log.innerHTML+=`<p>${esc(r.reply)}</p>`}catch{log.innerHTML+='<p>Error, try again.</p>'}log.scrollTop=1e5}
+msg.addEventListener('keydown',e=>e.key==='Enter'&&send());load();api('/alerts').then(a=>alerts.innerHTML=a.map(x=>`<div class="alert"><b>${esc(x.type)}</b> · ${esc(x.region)}<br>${esc(x.text)}</div>`).join(''));
+
+function tok(){try{return localStorage.getItem('fs_token')}catch{return null}}
+function setTheme(p,noSave){try{localStorage.setItem('fs_theme',p)}catch{}
+ document.documentElement.dataset.theme=p==='system'?(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'):p;
+ document.getElementById('theme').value=p;
+ if(!noSave&&tok())api('/me/theme',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({theme:p})}).catch(()=>{})}
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>{if((localStorage.getItem('fs_theme')||'system')==='system')setTheme('system',true)});
+setTheme(localStorage.getItem('fs_theme')||'system',true);
+const J={'Content-Type':'application/json'};let me=null,REG=[];
+async function auth(kind){try{const b={email:em.value,password:pw.value};if(kind==='register')b.name=nm.value;
+ const r=await api('/auth/'+kind,{method:'POST',headers:J,body:JSON.stringify(b)});localStorage.setItem('fs_token',r.token);await boot()}catch(e){aerr.textContent=e.message}}
+function logout(){localStorage.removeItem('fs_token');me=null;boot()}
+async function addField(){try{await api('/fields',{method:'POST',headers:J,body:JSON.stringify({name:fn.value,region:fr.value,area_ha:fa.value?+fa.value:null})});await boot()}catch(e){aerr.textContent=e.message}}
+async function delField(i){await api('/fields/'+i,{method:'DELETE'});boot()}
+async function boot(){REG=await api('/regions');me=null;
+ if(tok()){try{me=await api('/me');setTheme(me.theme,true)}catch{localStorage.removeItem('fs_token')}}
+ if(!me){acc.innerHTML=`<h3>Account</h3><input id="nm" placeholder="Name (sign up)" autocomplete="name"> <input id="em" placeholder="Email" autocomplete="email"> <input id="pw" type="password" placeholder="Password (8+ chars)" autocomplete="current-password"><div style="margin-top:8px;display:flex;gap:6px"><button onclick="auth('login')">Log in</button><button onclick="auth('register')">Sign up</button></div><p class="mut" id="aerr" role="alert"></p>`;return}
+ const f=await api('/fields');
+ acc.innerHTML=`<h3>Hi, ${esc(me.name)} <button onclick="logout()" style="float:right">Log out</button></h3><div id="fl">${f.length?f.map(x=>`<div class="row" style="margin:6px 0"><span>${esc(x.name)} <span class="mut">${esc(x.region)}${x.area_ha?' · '+x.area_ha+' ha':''}</span></span><button onclick="delField(${x.id})" aria-label="Delete field">Remove</button></div>`).join(''):'<p class="mut">No fields yet.</p>'}</div>
+ <div style="display:flex;gap:6px;flex-wrap:wrap"><input id="fn" placeholder="Field name" style="flex:1"><select id="fr">${REG.map(r=>`<option value="${r.id}">${esc(r.name)}</option>`).join('')}</select><input id="fa" type="number" min="0" placeholder="ha" style="width:70px"><button onclick="addField()">Add</button></div><p class="mut" id="aerr" role="alert"></p>`}
+api('/rankings').then(r=>rank.innerHTML=r.productivity.map(x=>`<div class="row"><span>${esc(x.name)}</span><b>${x.prod}</b></div><div class="bar"><i style="width:${x.prod}%"></i></div>`).join(''));
+boot();
+</script></body></html>
